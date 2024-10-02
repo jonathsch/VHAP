@@ -68,6 +68,7 @@ class VideoDataset(Dataset):
         self.timestep_ids = sorted(self.timestep_ids)
         self.timestep_indices = list(range(len(self.timestep_ids)))
 
+        self.filter_tracking_frames(3)
         self.filter_division(cfg.division)
         self.filter_subset(cfg.subset)
 
@@ -182,6 +183,9 @@ class VideoDataset(Dataset):
             elif "cs" in subset:
                 cs = self.get_number_after_prefix(subset, "cs")
                 self.camera_ids = self.camera_ids[::cs]
+
+    def filter_tracking_frames(self, track_frame_interval: int = 3):
+        self.timestep_indices = self.timestep_indices[::track_frame_interval]
 
     def load_camera_params(self):
         self.camera_ids = ["0"]
