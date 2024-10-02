@@ -43,11 +43,14 @@ class VideoDataset(Dataset):
         self.cfg = cfg
         self.img_to_tensor = img_to_tensor
         self.batchify_all_views = batchify_all_views
-        
+
         sequence_paths = self.match_sequences()
         if len(sequence_paths) > 1:
             logger.info(f"Found multiple sequences: {sequence_paths}")
-            raise ValueError(f"Found multiple sequences by '{cfg.sequence}': \n" + "\n\t".join([str(x) for x in sequence_paths]))
+            raise ValueError(
+                f"Found multiple sequences by '{cfg.sequence}': \n"
+                + "\n\t".join([str(x) for x in sequence_paths])
+            )
         elif len(sequence_paths) == 0:
             raise ValueError(f"Cannot find sequence: {cfg.sequence}")
         self.sequence_path = sequence_paths[0]
@@ -58,16 +61,19 @@ class VideoDataset(Dataset):
 
         # timesteps
         self.timestep_ids = set(
-            f.split('.')[0].split('_')[-1]
-            for f in os.listdir(self.sequence_path / self.properties['rgb']['folder']) if f.endswith(self.properties['rgb']['suffix'])
+            f.split(".")[0].split("_")[-1]
+            for f in os.listdir(self.sequence_path / self.properties["rgb"]["folder"])
+            if f.endswith(self.properties["rgb"]["suffix"])
         )
         self.timestep_ids = sorted(self.timestep_ids)
         self.timestep_indices = list(range(len(self.timestep_ids)))
 
         self.filter_division(cfg.division)
         self.filter_subset(cfg.subset)
-            
-        logger.info(f"number of timesteps: {self.num_timesteps}, number of cameras: {self.num_cameras}")
+
+        logger.info(
+            f"number of timesteps: {self.num_timesteps}, number of cameras: {self.num_cameras}"
+        )
 
         # collect
         self.items = []
@@ -82,11 +88,20 @@ class VideoDataset(Dataset):
                         "camera_id": camera_id,
                     }
                 )
-    
+
+    def is_tracking_frame(self, timestep_index: int) -> bool:
+        return timestep_index % self.cfg.tracking_frame_interval == 0
+
     def match_sequences(self):
-        logger.info(f"Looking for sequence '{self.cfg.sequence}' at {self.cfg.root_folder}")
-        return list(filter(lambda x: x.is_dir(), self.cfg.root_folder.glob(f"{self.cfg.sequence}*")))
-    
+        logger.info(
+            f"Looking for sequence '{self.cfg.sequence}' at {self.cfg.root_folder}"
+        )
+        return list(
+            filter(
+                lambda x: x.is_dir(), self.cfg.root_folder.glob(f"{self.cfg.sequence}*")
+            )
+        )
+
     def define_properties(self):
         self.properties = {
             "rgb": {
@@ -118,10 +133,16 @@ class VideoDataset(Dataset):
         i = string.find(prefix)
         if i != -1:
             number_begin = i + len(prefix)
-            assert number_begin < len(string), f"No number found behind prefix '{prefix}'"
-            assert string[number_begin].isdigit(), f"No number found behind prefix '{prefix}'"
+            assert number_begin < len(
+                string
+            ), f"No number found behind prefix '{prefix}'"
+            assert string[
+                number_begin
+            ].isdigit(), f"No number found behind prefix '{prefix}'"
 
-            non_digit_indices = [i for i, c in enumerate(string[number_begin:]) if not c.isdigit()]
+            non_digit_indices = [
+                i for i, c in enumerate(string[number_begin:]) if not c.isdigit()
+            ]
             if len(non_digit_indices) > 0:
                 number_end = number_begin + min(non_digit_indices)
                 return int(string[number_begin:number_end])
@@ -129,54 +150,52 @@ class VideoDataset(Dataset):
                 return int(string[number_begin:])
         else:
             return None
-    
+
     def filter_division(self, division):
         pass
 
     def filter_subset(self, subset):
         if subset is not None:
-            if 'ti' in subset:
-                ti = self.get_number_after_prefix(subset, 'ti')
-                if 'tj' in subset:
-                    tj = self.get_number_after_prefix(subset, 'tj')
-                    self.timestep_indices = self.timestep_indices[ti:tj+1]
+            if "ti" in subset:
+                ti = self.get_number_after_prefix(subset, "ti")
+                if "tj" in subset:
+                    tj = self.get_number_after_prefix(subset, "tj")
+                    self.timestep_indices = self.timestep_indices[ti : tj + 1]
                 else:
-                    self.timestep_indices = self.timestep_indices[ti:ti+1]
-            elif 'tn' in subset:
-                tn = self.get_number_after_prefix(subset, 'tn')
+                    self.timestep_indices = self.timestep_indices[ti : ti + 1]
+            elif "tn" in subset:
+                tn = self.get_number_after_prefix(subset, "tn")
                 tn_all = len(self.timestep_indices)
                 tn = min(tn, tn_all)
-                self.timestep_indices = self.timestep_indices[::tn_all // tn][:tn]
-            elif 'ts' in subset:
-                ts = self.get_number_after_prefix(subset, 'ts')
+                self.timestep_indices = self.timestep_indices[:: tn_all // tn][:tn]
+            elif "ts" in subset:
+                ts = self.get_number_after_prefix(subset, "ts")
                 self.timestep_indices = self.timestep_indices[::ts]
-            if 'ci' in subset:
-                ci = self.get_number_after_prefix(subset, 'ci')
-                self.camera_ids = self.camera_ids[ci:ci+1]
-            elif 'cn' in subset:
-                cn = self.get_number_after_prefix(subset, 'cn')
+            if "ci" in subset:
+                ci = self.get_number_after_prefix(subset, "ci")
+                self.camera_ids = self.camera_ids[ci : ci + 1]
+            elif "cn" in subset:
+                cn = self.get_number_after_prefix(subset, "cn")
                 cn_all = len(self.camera_ids)
                 cn = min(cn, cn_all)
-                self.camera_ids = self.camera_ids[::cn_all // cn][:cn]
-            elif 'cs' in subset:
-                cs = self.get_number_after_prefix(subset, 'cs')
+                self.camera_ids = self.camera_ids[:: cn_all // cn][:cn]
+            elif "cs" in subset:
+                cs = self.get_number_after_prefix(subset, "cs")
                 self.camera_ids = self.camera_ids[::cs]
-    
+
     def load_camera_params(self):
-        self.camera_ids =  ['0']
+        self.camera_ids = ["0"]
 
         # Guessed focal length, height, width. Should be optimized or replaced by real values
         f, h, w = 512, 512, 512
-        K = torch.Tensor([
-            [f, 0, w],
-            [0, f, h],
-            [0, 0, 1]
-        ])
+        K = torch.Tensor([[f, 0, w], [0, f, h], [0, 0, 1]])
 
         orientation = torch.eye(3)[None, ...]  # (1, 3, 3)
         location = torch.Tensor([0, 0, 1])[None, ..., None]  # (1, 3, 1)
 
-        c2w = torch.cat([orientation, location], dim=-1)  # camera-to-world transformation
+        c2w = torch.cat(
+            [orientation, location], dim=-1
+        )  # camera-to-world transformation
 
         if self.cfg.target_extrinsic_type == "w2c":
             R = orientation.transpose(-1, -2)
@@ -186,7 +205,9 @@ class VideoDataset(Dataset):
         elif self.cfg.target_extrinsic_type == "c2w":
             extrinsic = c2w
         else:
-            raise NotImplementedError(f"Unknown extrinsic type: {self.cfg.target_extrinsic_type}")
+            raise NotImplementedError(
+                f"Unknown extrinsic type: {self.cfg.target_extrinsic_type}"
+            )
 
         self.camera_params = {}
         for i, camera_id in enumerate(self.camera_ids):
@@ -225,13 +246,17 @@ class VideoDataset(Dataset):
 
             if self.cfg.landmark_source == "face-alignment":
                 landmark_path = self.get_property_path("landmark2d/face-alignment", i)
-            elif self.cfg.landmark_source == "star": 
+            elif self.cfg.landmark_source == "star":
                 landmark_path = self.get_property_path("landmark2d/STAR", i)
             else:
-                raise NotImplementedError(f"Unknown landmark source: {self.cfg.landmark_source}")
+                raise NotImplementedError(
+                    f"Unknown landmark source: {self.cfg.landmark_source}"
+                )
             landmark_npz = np.load(landmark_path)
 
-            item["lmk2d"] = landmark_npz["face_landmark_2d"][timestep_index]  # (num_points, 3)
+            item["lmk2d"] = landmark_npz["face_landmark_2d"][
+                timestep_index
+            ]  # (num_points, 3)
             if (item["lmk2d"][:, :2] == -1).sum() > 0:
                 item["lmk2d"][:, 2:] = 0.0
             else:
@@ -269,16 +294,14 @@ class VideoDataset(Dataset):
         if "rgb" in item:
             H, W, _ = item["rgb"].shape
             h, w = int(H * self.cfg.scale_factor), int(W * self.cfg.scale_factor)
-            rgb = Image.fromarray(item["rgb"]).resize(
-                (w, h), resample=Image.BILINEAR
-            )
+            rgb = Image.fromarray(item["rgb"]).resize((w, h), resample=Image.BILINEAR)
             item["rgb"] = np.array(rgb)
-    
+
         # properties that are defined based on image size
         if "lmk2d" in item:
             item["lmk2d"][..., 0] *= w
             item["lmk2d"][..., 1] *= h
-        
+
         if "lmk2d_iris" in item:
             item["lmk2d_iris"][..., 0] *= w
             item["lmk2d_iris"][..., 1] *= h
@@ -341,7 +364,8 @@ class VideoDataset(Dataset):
         if self.num_cameras > 1:
             if camera_id is None:
                 assert (
-                    index is not None), "index is required when camera_id is not provided."
+                    index is not None
+                ), "index is required when camera_id is not provided."
                 camera_id = self.items[index]["camera_id"]
             if "cam_id_prefix" in p:
                 camera_id = p["cam_id_prefix"] + camera_id
@@ -350,7 +374,9 @@ class VideoDataset(Dataset):
 
         if per_timestep:
             if timestep_id is None:
-                assert index is not None, "index is required when timestep_id is not provided."
+                assert (
+                    index is not None
+                ), "index is required when timestep_id is not provided."
                 timestep_id = self.items[index]["timestep_id"]
             if len(camera_id) > 0:
                 path /= f"{camera_id}_{timestep_id}.{suffix}"
@@ -363,7 +389,7 @@ class VideoDataset(Dataset):
                 path = Path(str(path) + f".{suffix}")
 
         return path
-        
+
     def get_property_path_list(self, name):
         paths = []
         for i in range(len(self.items)):
