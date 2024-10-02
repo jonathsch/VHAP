@@ -72,8 +72,8 @@ class NeRSembleDataset(VideoDataset):
         self.properties['alpha_map']['cam_id_prefix'] = "cam_"
     
     def load_camera_params(self):
-        load_path = self.cfg.root_folder / "camera_params" / self.cfg.subject / "camera_params.json"
-        assert load_path.exists()
+        load_path = self.cfg.root_folder / self.cfg.subject / "camera_params.json"
+        assert load_path.exists(), f"{load_path} does not exist"
         param = json.load(open(load_path))
 
         K = torch.Tensor(param["intrinsics"])

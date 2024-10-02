@@ -13,7 +13,7 @@ class ImageFolderDataset(Dataset):
     def __init__(
         self,
         image_folder: Path,
-        background_folder: Optional[Path]=None,
+        background_folder: Optional[Path] = None,
         background_fname2camId=lambda x: x,
         image_fname2camId=lambda x: x,
     ):
@@ -30,17 +30,17 @@ class ImageFolderDataset(Dataset):
 
         logger.info(f"Initializing dataset from folder {image_folder}")
 
-        self.image_paths = sorted(list(image_folder.glob('*.jpg')))
+        self.image_paths = sorted(list(image_folder.glob("*.jpg")))
 
         if background_folder is not None:
             self.backgrounds = {}
-            background_paths = sorted(list((image_folder / background_folder).glob('*.jpg')))
+            background_paths = sorted(list((background_folder).glob("*.png")))
 
             for background_path in background_paths:
                 bg = np.array(Image.open(background_path))
                 cam_id = background_fname2camId(background_path.name)
                 self.backgrounds[cam_id] = bg
-    
+
     def __len__(self):
         return len(self.image_paths)
 
@@ -50,11 +50,11 @@ class ImageFolderDataset(Dataset):
         rgb = np.array(Image.open(image_path))
         item = {
             "rgb": rgb,
-            'image_path': str(image_path),
+            "image_path": str(image_path),
         }
 
         if self.background_foler is not None:
-            item['background'] = self.backgrounds[cam_id]
+            item["background"] = self.backgrounds[cam_id]
 
         return item
 
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     from torch.utils.data import DataLoader
 
     dataset = ImageFolderDataset(
-        image_folder='./xx',
+        image_folder="./xx",
         img_to_tensor=True,
     )
 

@@ -11,7 +11,7 @@ from BackgroundMattingV2.model import MattingRefine
 from BackgroundMattingV2.asset import get_weights_path
 
 
-def video2frames(video_path: Path, image_dir: Path, keep_video_name: bool=False, target_fps: int=30, n_downsample: int=1):
+def video2frames(video_path: Path, image_dir: Path, keep_video_name: bool=False, target_fps: int=73, n_downsample: int=1):
     print(f'Converting video {video_path} to frames with downsample scale {n_downsample}')
     if not image_dir.exists():
         image_dir.mkdir(parents=True)
@@ -36,11 +36,11 @@ def video2frames(video_path: Path, image_dir: Path, keep_video_name: bool=False,
     w = W // n_downsample
     h = H // n_downsample
     print(f'[Video]  FPS: {video_fps} | number of frames: {num_frames} | resolution: {W}x{H}')
-    print(f'[Target] FPS: {target_fps} | number of frames: {round(num_frames * target_fps / int(video_fps))} | resolution: {w}x{h}')
+    print(f'[Target] FPS: {video_fps} | number of frames: {num_frames} | resolution: {w}x{h}')
 
     (ffmpeg
     .input(str(video_path))
-    .filter('fps', fps=f'{target_fps}')
+    .filter('fps', fps=f'{video_fps}')
     .filter('scale', width=w, height=h)
     .output(
         str(image_dir / f'{file_path_stem}%06d.jpg'),
@@ -150,7 +150,7 @@ def main(
         target_fps: int=25, 
         downsample_scales: List[int]=[],
         matting_method: Optional[Literal['robust_video_matting', 'background_matting_v2']]=None,
-        background_folder: Path=Path('../../BACKGROUND'),
+        background_folder: Optional[Path]=None,
     ):
     if not input.exists():
         matched_paths = list(input.parent.glob(f"{input.name}*"))
@@ -174,13 +174,16 @@ def main(
     else:
         raise ValueError(f"Input should be a video file or a directory containing video files: {input}")
 
-    # extract frames
-    for i, video_path in enumerate(videos):
-        print(f'\n[{i}/{len(videos)}] Processing video file: {video_path}')
+    if background_folder is None:
+        background_folder = input.parent / 'BACKGROUND'
 
-        for n_downsample in [1] + downsample_scales:
-            image_dir_ = image_dir if n_downsample == 1 else Path(str(image_dir) + f'_{n_downsample}')
-            video2frames(video_path, image_dir_, keep_video_name=len(videos) > 1, target_fps=target_fps, n_downsample=n_downsample)
+    # # extract frames
+    # for i, video_path in enumerate(videos):
+    #     print(f'\n[{i}/{len(videos)}] Processing video file: {video_path}')
+
+    #     for n_downsample in [1] + downsample_scales:
+    #         image_dir_ = image_dir if n_downsample == 1 else Path(str(image_dir) + f'_{n_downsample}')
+    #         video2frames(video_path, image_dir_, keep_video_name=len(videos) > 1, target_fps=target_fps, n_downsample=n_downsample)
         
     # foreground matting
     if matting_method == 'robust_video_matting':
