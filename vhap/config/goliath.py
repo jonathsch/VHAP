@@ -28,9 +28,10 @@ logger = get_logger(__name__)
 class GoliathDataConfig(DataConfig):
     _target: str = "vhap.data.goliath_dataset.GoliathDataset"
     calibrated: bool = True
-    background_color: Optional[Literal["white", "black"]] = None
+    background_color: Optional[Literal["white", "black"]] = "black"
     landmark_source: Optional[Literal["face-alignment", "star"]] = "star"
 
+    use_alpha_map: bool = True
     use_color_correction: bool = True
     """Whether to use color correction to harmonize the color of the input images."""
     camera_subset: Optional[List[str]] = None

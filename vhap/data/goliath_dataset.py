@@ -8,8 +8,10 @@ from vhap.config.goliath import GoliathDataConfig
 from vhap.util import camera
 from vhap.util.log import get_logger
 import trimesh
+from PIL import Image
 from dreifus.matrix import Pose, CameraCoordinateConvention, PoseType
 import zipfile
+from copy import deepcopy
 
 SCALE_FACTOR = 0.001
 
@@ -71,6 +73,11 @@ class GoliathDataset(VideoDataset):
                 "per_timestep": True,
                 "suffix": "avif",
             },
+            "alpha_map": {
+                "folder": "segmentation_parts",
+                "per_timestep": True,
+                "suffix": "png",
+            },
             "landmark2d/face-alignment": {
                 "folder": "landmark2d/face-alignment",
                 "per_timestep": False,
@@ -122,9 +129,9 @@ class GoliathDataset(VideoDataset):
         # Convert from mm to meters
         Ts[:, :3, 3] *= SCALE_FACTOR
 
-        # Ks /= 2  # Fix wrong scaling in the dataset
-        if self.cfg.n_downsample_rgb:
-            Ks /= self.cfg.n_downsample_rgb
+        Ks = {cam_id: K / 2 for cam_id, K in Ks.items()} # Fix wrong scaling in the dataset
+        # if self.cfg.n_downsample_rgb:
+        #     Ks /= self.cfg.n_downsample_rgb
 
         # Convert to OpenGL convention
         extrinsic = [
@@ -209,6 +216,68 @@ class GoliathDataset(VideoDataset):
     def apply_transforms(self, item):
         # NOTE: Skip for now
         super().apply_transforms(item)
+        return item
+
+    def getitem_single_image(self, i):
+        item = deepcopy(self.items[i])
+
+        rgb_path = self.get_property_path("rgb", i)
+        item["rgb"] = np.array(Image.open(rgb_path))
+
+        camera_param = self.camera_params[item["camera_id"]]
+        item["intrinsic"] = camera_param["intrinsic"].clone()
+        item["extrinsic"] = camera_param["extrinsic"].clone()
+
+        if self.cfg.use_alpha_map or self.cfg.background_color is not None:
+            alpha_path = self.get_property_path("alpha_map", i)
+            alpha_map = Image.open(alpha_path).resize(item["rgb"].shape[:2][::-1])
+            alpha_map = np.array(alpha_map)
+            alpha_map = (alpha_map != 0).astype(np.uint8) * 255
+            item["alpha_map"] = alpha_map
+
+
+        if self.cfg.use_landmark:
+            timestep_index = self.items[i]["timestep_index"]
+
+            if self.cfg.landmark_source == "face-alignment":
+                landmark_path = self.get_property_path("landmark2d/face-alignment", i)
+            elif self.cfg.landmark_source == "star":
+                landmark_path = self.get_property_path("landmark2d/STAR", i)
+            else:
+                raise NotImplementedError(
+                    f"Unknown landmark source: {self.cfg.landmark_source}"
+                )
+            landmark_npz = np.load(landmark_path)
+
+            item["lmk2d"] = landmark_npz["face_landmark_2d"][
+                timestep_index
+            ]  # (num_points, 3)
+            if (item["lmk2d"][:, :2] == -1).sum() > 0:
+                item["lmk2d"][:, 2:] = 0.0
+            else:
+                item["lmk2d"][:, 2:] = 1.0
+
+        item = self.apply_transforms(item)
+        return item
+
+    def apply_background_color(self, item):
+        if self.cfg.background_color is not None:
+            assert (
+                "alpha_map" in item
+            ), "'alpha_map' is required to apply background color."
+            fg = item["rgb"]
+            if self.cfg.background_color == "white":
+                bg = np.ones_like(fg) * 255
+            elif self.cfg.background_color == "black":
+                bg = np.zeros_like(fg)
+            else:
+                raise NotImplementedError(
+                    f"Unknown background color: {self.cfg.background_color}."
+                )
+
+            w = item["alpha_map"][..., None] / 255
+            img = (w * fg + (1 - w) * bg).astype(np.uint8)
+            item["rgb"] = img
         return item
 
     def get_property_path(
