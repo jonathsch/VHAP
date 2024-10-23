@@ -40,14 +40,17 @@ def plot_landmarks_2d(
     if input_float:
         img = (img * 255).byte()
 
-    img = draw_keypoints(
-        img,
-        lmks,
-        connectivity=connectivity,
-        colors=colors,
-        radius=2 * unit,
-        width=2 * unit,
-    )
+    try:
+        img = draw_keypoints(
+            img,
+            lmks,
+            connectivity=connectivity,
+            colors=colors,
+            radius=2 * unit,
+            width=2 * unit,
+        )
+    except Exception as e:
+        pass
 
     if input_float:
         img = img.float() / 255

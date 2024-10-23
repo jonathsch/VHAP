@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Optional
 import numpy as np
 import PIL.Image as Image
+import pillow_avif  # noqa: F401
 import torch
 import torchvision.transforms.functional as F
 from torch.utils.data import Dataset, default_collate
@@ -60,6 +61,8 @@ class VideoDataset(Dataset):
         self.load_camera_params()
 
         # timesteps
+        # print(sequence_paths, flush=True)
+        # print(self.cfg.sequence, flush=True)
         self.timestep_ids = set(
             f.split(".")[0].split("_")[-1]
             for f in os.listdir(self.sequence_path / self.properties["rgb"]["folder"])
@@ -68,7 +71,6 @@ class VideoDataset(Dataset):
         self.timestep_ids = sorted(self.timestep_ids)
         self.timestep_indices = list(range(len(self.timestep_ids)))
 
-        self.filter_tracking_frames(3)
         self.filter_division(cfg.division)
         self.filter_subset(cfg.subset)
 

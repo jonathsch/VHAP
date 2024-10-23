@@ -258,7 +258,7 @@ class TrackedFLAMEDatasetWriter:
             elif self.mode == 'param':
                 frame['flame_param_path'] = f"flame_param/{ti:05d}.npz"
                 if not saved[ti]:
-                    worker_args.append([self.tgt_folder, frame['flame_param_path'], self.flame_params, ti_orig])
+                    worker_args.append([self.tgt_folder, frame['flame_param_path'], self.flame_params, ti])
                     saved[ti] = True
                     func = self.write_flame_param
             #--- no multiprocessing

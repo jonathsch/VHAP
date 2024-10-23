@@ -1,8 +1,8 @@
-# 
-# Toyota Motor Europe NV/SA and its affiliated companies retain all intellectual 
-# property and proprietary rights in and to this software and related documentation. 
-# Any commercial use, reproduction, disclosure or distribution of this software and 
-# related documentation without an express license agreement from Toyota Motor Europe NV/SA 
+#
+# Toyota Motor Europe NV/SA and its affiliated companies retain all intellectual
+# property and proprietary rights in and to this software and related documentation.
+# Any commercial use, reproduction, disclosure or distribution of this software and
+# related documentation without an express license agreement from Toyota Motor Europe NV/SA
 # is strictly prohibited.
 #
 
@@ -14,6 +14,7 @@ from vhap.data.video_dataset import VideoDataset
 from vhap.config.nersemble import NersembleDataConfig
 from vhap.util import camera
 from vhap.util.log import get_logger
+import trimesh
 
 
 logger = get_logger(__name__)
@@ -61,16 +62,21 @@ class NeRSembleDataset(VideoDataset):
             img_to_tensor=img_to_tensor,
             batchify_all_views=batchify_all_views,
         )
-    
+
     def match_sequences(self):
         logger.info(f"Subject: {self.cfg.subject}, sequence: {self.cfg.sequence}")
-        return list(filter(lambda x: x.is_dir(), (self.cfg.root_folder / self.cfg.subject).glob(f"{self.cfg.sequence}*")))
-    
+        return list(
+            filter(
+                lambda x: x.is_dir(),
+                (self.cfg.root_folder / self.cfg.subject).glob(f"{self.cfg.sequence}*"),
+            )
+        )
+
     def define_properties(self):
         super().define_properties()
-        self.properties['rgb']['cam_id_prefix'] = "cam_"
-        self.properties['alpha_map']['cam_id_prefix'] = "cam_"
-    
+        self.properties["rgb"]["cam_id_prefix"] = "cam_"
+        self.properties["alpha_map"]["cam_id_prefix"] = "cam_"
+
     def load_camera_params(self):
         load_path = self.cfg.root_folder / self.cfg.subject / "camera_params.json"
         assert load_path.exists(), f"{load_path} does not exist"
@@ -78,13 +84,17 @@ class NeRSembleDataset(VideoDataset):
 
         K = torch.Tensor(param["intrinsics"])
 
-        self.camera_ids =  list(param["world_2_cam"].keys())
-        w2c = torch.tensor([param["world_2_cam"][k] for k in self.camera_ids])  # (N, 4, 4)
+        self.camera_ids = list(param["world_2_cam"].keys())
+        w2c = torch.tensor(
+            [param["world_2_cam"][k] for k in self.camera_ids]
+        )  # (N, 4, 4)
         R = w2c[..., :3, :3]
         T = w2c[..., :3, 3]
 
         orientation = R.transpose(-1, -2)  # (N, 3, 3)
         location = R.transpose(-1, -2) @ -T[..., None]  # (N, 3, 1)
+
+        trimesh.PointCloud(location[..., 0].detach().cpu().numpy()).export("campos_nersemble.ply")
 
         # adjust how cameras distribute in the space with a global rotation
         if self.cfg.align_cameras_to_axes:
@@ -98,7 +108,9 @@ class NeRSembleDataset(VideoDataset):
                 self.cfg.camera_coord_conversion, orientation
             )
 
-        c2w = torch.cat([orientation, location], dim=-1)  # camera-to-world transformation
+        c2w = torch.cat(
+            [orientation, location], dim=-1
+        )  # camera-to-world transformation
 
         if self.cfg.target_extrinsic_type == "w2c":
             R = orientation.transpose(-1, -2)
@@ -108,7 +120,9 @@ class NeRSembleDataset(VideoDataset):
         elif self.cfg.target_extrinsic_type == "c2w":
             extrinsic = c2w
         else:
-            raise NotImplementedError(f"Unknown extrinsic type: {self.cfg.target_extrinsic_type}")
+            raise NotImplementedError(
+                f"Unknown extrinsic type: {self.cfg.target_extrinsic_type}"
+            )
 
         self.camera_params = {}
         for i, camera_id in enumerate(self.camera_ids):
@@ -138,13 +152,21 @@ class NeRSembleDataset(VideoDataset):
             else:
                 raise NotImplementedError(f"Unknown division type: {division}")
             logger.info(f"division: {division}")
-    
+
     def apply_transforms(self, item):
         if self.cfg.use_color_correction:
-            color_correction_path = self.cfg.root_folder / 'color_correction' / self.cfg.subject / f'{item["camera_id"]}.npy'
+            color_correction_path = (
+                self.cfg.root_folder
+                / "color_correction"
+                / self.cfg.subject
+                / f'{item["camera_id"]}.npy'
+            )
             affine_color_transform = np.load(color_correction_path)
             rgb = item["rgb"] / 255
-            rgb = rgb @ affine_color_transform[:3, :3] + affine_color_transform[np.newaxis, :3, 3]
+            rgb = (
+                rgb @ affine_color_transform[:3, :3]
+                + affine_color_transform[np.newaxis, :3, 3]
+            )
             item["rgb"] = (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
 
         super().apply_transforms(item)
@@ -152,13 +174,20 @@ class NeRSembleDataset(VideoDataset):
 
 
 if __name__ == "__main__":
+    from pathlib import Path
     import tyro
     from tqdm import tqdm
     from torch.utils.data import DataLoader
+    from torchvision.utils import save_image
     from vhap.config.nersemble import NersembleDataConfig
     from vhap.config.base import import_module
 
-    cfg = tyro.cli(NersembleDataConfig)
+    cfg = tyro.cli(
+        NersembleDataConfig,
+        default=NersembleDataConfig(
+            root_folder=Path("/mnt/hdd/data/nersemble"), sequence="EMO-1", subject="017"
+        ),
+    )
     cfg.use_landmark = False
     dataset = import_module(cfg._target)(
         cfg=cfg,
@@ -167,11 +196,18 @@ if __name__ == "__main__":
     )
 
     print(len(dataset))
+    # print(dataset.camera_params["222200037"])
+    # intrinsics = dataset.camera_params["222200037"]["intrinsic"]
+    # extrinsics = dataset.camera_params["222200037"]["extrinsic"]
+    # np.save("intrinsics.npy", intrinsics.detach().cpu().numpy())
+    # np.save("extrinsics.npy", extrinsics.detach().cpu().numpy())
+    # quit()
 
     sample = dataset[0]
-    print(sample.keys())
-    print(sample["rgb"].shape)
+    # print(sample.keys())
+    # print(sample["rgb"].shape)
 
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=1)
-    for item in tqdm(dataloader):
-        pass
+    batch = next(iter(dataloader))
+    print(batch["intrinsic"][0])
+    print(batch["extrinsic"][0])
