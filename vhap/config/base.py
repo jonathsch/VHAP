@@ -46,7 +46,7 @@ class DataConfig(Config):
     """Adjust how cameras distribute in the space with a global rotation"""
     camera_coord_conversion: str = 'opencv->opengl'
     target_extrinsic_type: Literal['w2c', 'c2w'] = 'w2c'
-    n_downsample_rgb: Optional[int] = None
+    n_downsample_rgb: Optional[int] = 2
     """Load from downsampled RGB images to save data IO time"""
     scale_factor: float = 1.0
     """Further apply a scaling transformation after the downsampling of RGB"""

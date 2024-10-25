@@ -18,6 +18,10 @@ SCALE_FACTOR = 0.001
 
 logger = get_logger(__name__)
 
+def linear2srgb(img: torch.Tensor, gamma: float = 2.4) -> torch.Tensor:
+    linear_part = img * 12.92
+    exp_part = 1.055 * (torch.max(img, torch.tensor(0.0031308)) ** (1 / gamma)) - 0.055
+    return torch.where(img <= 0.0031308, linear_part, exp_part)
 
 class GoliathDataset(VideoDataset):
     def __init__(
@@ -35,17 +39,15 @@ class GoliathDataset(VideoDataset):
         )
 
         # Find tracking frames (3D keypoints are available)
-        self.timestep_ids = sorted([
-            p.stem
-            for p in (
-                self.cfg.root_folder / self.cfg.sequence / "keypoints_3d"
-            ).iterdir()
-            if p.suffix == ".json"
-        ])
-
-        # Limit to first 100 frames for debugging
-        self.timestep_ids = self.timestep_ids[:100]
-        print(*self.timestep_ids[:10], sep="\n")
+        self.timestep_ids = sorted(
+            [
+                p.stem
+                for p in (
+                    self.cfg.root_folder / self.cfg.sequence / "keypoints_3d"
+                ).iterdir()
+                if p.suffix == ".json" and int(p.stem) >= 138589
+            ]
+        )
 
         self.timestep_indices = list(range(len(self.timestep_ids)))
 
@@ -102,16 +104,10 @@ class GoliathDataset(VideoDataset):
         self.camera_ids = list(camera_params.keys())
 
         # Read camera intrinsics
-        Ks = {
-            cam_id: np.array(krt["K"]).T
-            for cam_id, krt in camera_params.items()
-        }
+        Ks = {cam_id: np.array(krt["K"]).T for cam_id, krt in camera_params.items()}
 
         # Read camera poses
-        Ts = {
-            cam_id: np.array(krt["T"]).T
-            for cam_id, krt in camera_params.items()
-        }
+        Ts = {cam_id: np.array(krt["T"]).T for cam_id, krt in camera_params.items()}
 
         # Convert camera poses to head-related poses wrt to first frame
         head_pose_path = (
@@ -124,18 +120,18 @@ class GoliathDataset(VideoDataset):
                 head_pose[:3, :4] = np.loadtxt(f)
 
         Ts = {cam_id: T @ head_pose for cam_id, T in Ts.items()}
-        Ts = np.stack([T for T in Ts.values()])  # (N, 4, 4)
 
         # Convert from mm to meters
-        Ts[:, :3, 3] *= SCALE_FACTOR
+        for T in Ts.values():
+            T[:3, 3] *= SCALE_FACTOR
 
-        Ks = {cam_id: K / 2 for cam_id, K in Ks.items()} # Fix wrong scaling in the dataset
-        # if self.cfg.n_downsample_rgb:
-        #     Ks /= self.cfg.n_downsample_rgb
+        Ks = {
+            cam_id: K / 2 for cam_id, K in Ks.items()
+        }  # Fix wrong scaling in the dataset
 
         # Convert to OpenGL convention
-        extrinsic = [
-            Pose(
+        Ts = {
+            cam_id: Pose(
                 extrinsics,
                 camera_coordinate_convention=CameraCoordinateConvention.OPEN_CV,
                 pose_type=PoseType.WORLD_2_CAM,
@@ -144,10 +140,8 @@ class GoliathDataset(VideoDataset):
             .change_camera_coordinate_convention(CameraCoordinateConvention.OPEN_GL)
             .change_pose_type(PoseType.WORLD_2_CAM)
             .numpy()
-            for extrinsics in Ts
-        ]
-        extrinsic = np.stack(extrinsic, axis=0)
-        extrinsic = torch.as_tensor(extrinsic, dtype=torch.float32)
+            for cam_id, extrinsics in Ts.items()
+        }
 
         # orientation = R# .transpose(-1, -2)  # (N, 3, 3)
         # location = R.transpose(-1, -2) @ -t[..., None]  # (N, 3, 1)
@@ -190,39 +184,47 @@ class GoliathDataset(VideoDataset):
         self.camera_params = {}
         for i, camera_id in enumerate(camera_params.keys()):
             self.camera_params[camera_id] = {
-                "intrinsic": torch.from_numpy(Ks[camera_id]),
-                "extrinsic": extrinsic[i],
+                "intrinsic": torch.as_tensor(Ks[camera_id], dtype=torch.float32),
+                "extrinsic": torch.as_tensor(Ts[camera_id], dtype=torch.float32),
             }
 
     def filter_division(self, division):
-        CAM_SUBSET = {
-            "401643",
-            "401645" "401646",
-            "401650",
-            "401652",
-            "401653",
-            "401655",
-            "401659",
-            "401949",
-            "401951",
-            "401958",
-        }
+        # Find cameras capturing the front of the face
+        cam_centers = {cam_id: torch.linalg.inv(KT["extrinsic"])[:3, 3] for cam_id, KT in self.camera_params.items()}
+        self.camera_ids = [cam_id for cam_id, center in cam_centers.items() if center[2] > 0.5]
         # CAM_SUBSET = {
-        #     "401645"
+        #     "401643",
+        #     "401645" "401646",
+        #     "401650",
+        #     "401652",
+        #     "401653",
+        #     "401655",
+        #     "401659",
+        #     "401949",
+        #     "401951",
+        #     "401958",
         # }
-        self.camera_ids = [cam_id for cam_id in self.camera_ids if cam_id in CAM_SUBSET]
-        pass
+        # # CAM_SUBSET = {
+        # #     "401645"
+        # # }
+        # self.camera_ids = [cam_id for cam_id in self.camera_ids if cam_id in CAM_SUBSET]
+        # pass
 
     def apply_transforms(self, item):
         # NOTE: Skip for now
         super().apply_transforms(item)
+        if "rgb" in item and isinstance(item["rgb"], torch.Tensor):
+            item["rgb"] = linear2srgb(torch.as_tensor(item["rgb"], dtype=torch.float32))
         return item
 
     def getitem_single_image(self, i):
         item = deepcopy(self.items[i])
 
         rgb_path = self.get_property_path("rgb", i)
-        item["rgb"] = np.array(Image.open(rgb_path))
+        img = Image.open(rgb_path)
+        width, height = img.size
+
+        item["rgb"] = np.array(img.resize((width // self.cfg.n_downsample_rgb, height // self.cfg.n_downsample_rgb)))
 
         camera_param = self.camera_params[item["camera_id"]]
         item["intrinsic"] = camera_param["intrinsic"].clone()
@@ -230,11 +232,10 @@ class GoliathDataset(VideoDataset):
 
         if self.cfg.use_alpha_map or self.cfg.background_color is not None:
             alpha_path = self.get_property_path("alpha_map", i)
-            alpha_map = Image.open(alpha_path).resize(item["rgb"].shape[:2][::-1])
+            alpha_map = Image.open(alpha_path).resize((width // self.cfg.n_downsample_rgb, height // self.cfg.n_downsample_rgb))
             alpha_map = np.array(alpha_map)
             alpha_map = (alpha_map != 0).astype(np.uint8) * 255
             item["alpha_map"] = alpha_map
-
 
         if self.cfg.use_landmark:
             timestep_index = self.items[i]["timestep_index"]

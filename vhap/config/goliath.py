@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 class GoliathDataConfig(DataConfig):
     _target: str = "vhap.data.goliath_dataset.GoliathDataset"
     calibrated: bool = True
-    background_color: Optional[Literal["white", "black"]] = "black"
+    background_color: Optional[Literal["white", "black"]] = None
     landmark_source: Optional[Literal["face-alignment", "star"]] = "star"
 
     use_alpha_map: bool = True
