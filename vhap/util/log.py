@@ -41,7 +41,7 @@ class ColorFormatter(logging.Formatter):
         return prefix + " " + log
 
 
-def get_logger(name, level=logging.DEBUG, root=False, log_dir=None):
+def get_logger(name, level=logging.WARN, root=False, log_dir=None):
     """
     Replaces the standard library logging.getLogger call in order to make some configuration
     for all loggers.
@@ -53,17 +53,18 @@ def get_logger(name, level=logging.DEBUG, root=False, log_dir=None):
     :return: the logger object
     """
     logger = logging.getLogger(name)
-    logger.setLevel(level)
+    logger.setLevel(logging.WARN)
 
     if root:
         # create handler for console
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(level)
+        console_handler.setLevel(logging.WARN)
         formatter = ColorFormatter(_colored("[%(asctime)s %(name)s]: ", "green") + "%(message)s",
                                    datefmt="%m/%d %H:%M:%S")
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
         logger.propagate = False # otherwise root logger prints things again
+        logging.disable(logging.DEBUG)
 
         if log_dir is not None:
             # add handler to log to a file

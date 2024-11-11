@@ -45,7 +45,7 @@ class GoliathDataset(VideoDataset):
                 for p in (
                     self.cfg.root_folder / self.cfg.sequence / "keypoints_3d"
                 ).iterdir()
-                if p.suffix == ".json" and int(p.stem) >= 138589
+                if p.suffix == ".json" and int(p.stem)
             ]
         )
 
@@ -87,7 +87,7 @@ class GoliathDataset(VideoDataset):
             },
             "landmark2d/STAR": {
                 "folder": "landmark2d/STAR",
-                "per_timestep": False,
+                "per_timestep": True,
                 "suffix": "npz",
             },
         }
@@ -98,7 +98,7 @@ class GoliathDataset(VideoDataset):
 
         with open(load_path, "r") as f:
             goliath_calib = json.load(f)["KRT"]
-        camera_params = {str(c["cameraId"]): c for c in goliath_calib}
+        camera_params = {str(c["cameraId"]): c for c in goliath_calib }
 
         # Save camera ids
         self.camera_ids = list(camera_params.keys())
@@ -143,7 +143,7 @@ class GoliathDataset(VideoDataset):
             for cam_id, extrinsics in Ts.items()
         }
 
-        # orientation = R# .transpose(-1, -2)  # (N, 3, 3)
+        # orientation = R.transpose(-1, -2)  # (N, 3, 3)
         # location = R.transpose(-1, -2) @ -t[..., None]  # (N, 3, 1)
         # location *= 0.001  # convert to meters
 
@@ -190,24 +190,51 @@ class GoliathDataset(VideoDataset):
 
     def filter_division(self, division):
         # Find cameras capturing the front of the face
-        cam_centers = {cam_id: torch.linalg.inv(KT["extrinsic"])[:3, 3] for cam_id, KT in self.camera_params.items()}
-        self.camera_ids = [cam_id for cam_id, center in cam_centers.items() if center[2] > 0.5]
-        # CAM_SUBSET = {
-        #     "401643",
-        #     "401645" "401646",
-        #     "401650",
-        #     "401652",
-        #     "401653",
-        #     "401655",
-        #     "401659",
-        #     "401949",
-        #     "401951",
-        #     "401958",
-        # }
+        # cam_centers = {cam_id: torch.linalg.inv(KT["extrinsic"])[:3, 3] for cam_id, KT in self.camera_params.items()}
+        # self.camera_ids = [cam_id for cam_id, center in cam_centers.items() if center[2] > 0.5]
+        CAM_SUBSET = [
+            "401643",
+            "401650",
+            "401653",
+            "401659",
+            "401892",
+            "401949",
+            "401955",
+            "401957",
+            "401961",
+            "401962",
+            "401964",
+            "402597",
+            "402598",
+            "402601",
+            "402792",
+            "402800",
+            "402803",
+            "402805",
+            "402807",
+            "402862",
+            "402866",
+            "402871",
+            "402875",
+            "402878",
+            "402879",
+            "402957",
+            "402959",
+            "402965",
+            "402966",
+            "402967",
+            "402968",
+            "402979",
+            "402983",
+            "403072",
+            "403073",
+            "403077",
+            "403078",
+        ]
         # # CAM_SUBSET = {
         # #     "401645"
         # # }
-        # self.camera_ids = [cam_id for cam_id in self.camera_ids if cam_id in CAM_SUBSET]
+        self.camera_ids = [cam_id for cam_id in self.camera_ids if cam_id in CAM_SUBSET]
         # pass
 
     def apply_transforms(self, item):
@@ -248,11 +275,10 @@ class GoliathDataset(VideoDataset):
                 raise NotImplementedError(
                     f"Unknown landmark source: {self.cfg.landmark_source}"
                 )
+            
             landmark_npz = np.load(landmark_path)
 
-            item["lmk2d"] = landmark_npz["face_landmark_2d"][
-                timestep_index
-            ]  # (num_points, 3)
+            item["lmk2d"] = landmark_npz["lmks"]
             if (item["lmk2d"][:, :2] == -1).sum() > 0:
                 item["lmk2d"][:, 2:] = 0.0
             else:
@@ -342,23 +368,30 @@ if __name__ == "__main__":
     from torch.utils.data import DataLoader
     from vhap.config.base import import_module
 
+
     cfg = tyro.cli(
         GoliathDataConfig,
         default=GoliathDataConfig(
-            root_folder=Path("/mnt/cluster/pegasus/jschmidt/goliath"),
+            root_folder=Path("/cluster/pegasus/jschmidt/goliath"),
             sequence="m--20230306--0707--AXE977--pilot--ProjectGoliath--Head",
+            use_landmark=True,
         ),
     )
-    cfg.use_landmark = False
+
     dataset = import_module(cfg._target)(
         cfg=cfg,
         img_to_tensor=False,
         batchify_all_views=True,
     )
 
-    print(dataset.num_timesteps)
-    print(dataset.num_cameras)
-    print(len(dataset))
+    dataset = GoliathDataset(cfg=cfg, img_to_tensor=False, batchify_all_views=True)
+
+    print(dataset.timestep_ids[:10])
+    print(dataset.timestep_indices[:10])
+
+    # print(dataset.num_timesteps)
+    # print(dataset.num_cameras)
+    # print(len(dataset))
 
     # print(dataset.camera_params["222200037"])
     # intrinsics = dataset.camera_params["222200037"]["intrinsic"]
@@ -373,8 +406,8 @@ if __name__ == "__main__":
 
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=1)
     batch = next(iter(dataloader))
-    print(batch["camera_id"][0])
-    print(batch["intrinsic"][0])
-    print(batch["extrinsic"][0])
+    # print(batch["camera_id"][0])
+    # print(batch["intrinsic"][0])
+    # print(batch["extrinsic"][0])
     # print(batch["intrinsic"][0])
     # print(batch["extrinsic"][0])

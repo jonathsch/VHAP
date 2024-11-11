@@ -1326,11 +1326,13 @@ class GlobalTracker(FlameTracker):
 
         self.calibrated = cfg.data.calibrated
 
-        self.detect_landmarks(cfg)
+        # self.detect_landmarks(cfg)
 
         # logging
         out_dir = cfg.exp.output_folder / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         out_dir.mkdir(parents=True)
+
+        self.logger = get_logger(__name__, root=True, log_dir=out_dir)
 
         self.frame_idx = self.cfg.begin_frame_idx
         self.out_dir = out_dir
@@ -1342,8 +1344,6 @@ class GlobalTracker(FlameTracker):
         config_yaml_path = out_dir / 'config.yml'
         config_yaml_path.write_text(yaml.dump(cfg), "utf8")
         print(tyro.to_yaml(cfg))
-
-        self.logger = get_logger(__name__, root=True, log_dir=out_dir)
 
         # data
         self.dataset = import_module(cfg.data._target)(

@@ -15,7 +15,13 @@ import math
 import cv2
 import numpy as np
 import dlib
-from pathlib import Path
+
+from tqdm import tqdm
+from torch.utils.data import DataLoader
+from vhap.config.base import import_module
+from vhap.data.goliath import GoliathHeadDataset, collate_fn, worker_init_fn
+from torchvision.utils import save_image
+import logging
 
 from star.lib import utility
 from star.asset import predictor_path, model_path
@@ -191,10 +197,11 @@ class Alignment:
         return landmarks
 
 
-def draw_pts(img, pts, mode="pts", shift=4, color=(0, 255, 0), radius=1, thickness=1, save_path=None, dif=0,
+def draw_pts(img, pts, mode="pts", shift=4, color=(0, 255, 0), radius=10, thickness=10, save_path=None, dif=0,
              scale=0.3, concat=False, ):
     img_draw = copy.deepcopy(img)
     img_draw = cv2.cvtColor(img_draw, cv2.COLOR_RGB2BGR)
+    print(img_draw.shape)
     for cnt, p in enumerate(pts):
         if mode == "index":
             cv2.putText(img_draw, str(cnt), (int(float(p[0] + dif)), int(float(p[1] + dif))), cv2.FONT_HERSHEY_SIMPLEX,
@@ -203,9 +210,8 @@ def draw_pts(img, pts, mode="pts", shift=4, color=(0, 255, 0), radius=1, thickne
             if len(img_draw.shape) > 2:
                 # 此处来回切换是因为opencv的bug
                 # img_draw = cv2.cvtColor(img_draw, cv2.COLOR_BGR2RGB)
-                # img_draw = cv2.cvtColor(img_draw, cv2.COLOR_RGB2BGR)
                 pass
-            cv2.circle(img_draw, (int(p[0] * img_draw.shape[1]), int(p[1] * img_draw.shape[0])), radius, color, -1)
+            cv2.circle(img_draw, (int(p[0] * img_draw.shape[1]), int(p[1] * img_draw.shape[0])), radius, color, thickness=thickness)
         else:
             raise NotImplementedError
     if concat:
@@ -232,7 +238,6 @@ class LandmarkDetectorSTAR:
         self.alignment = Alignment(args, model_path, dl_framework="pytorch", device_ids=device_ids)
 
     def detect_single_image(self, img):
-        # img = (img.transpose(0, 3, 1, 2) * 255).astype(np.uint8)
         bbox = self.detector(img, 1)
 
         if len(bbox) == 0:
@@ -265,8 +270,6 @@ class LandmarkDetectorSTAR:
             bbox[[0, 2]] /= w
             bbox[[1, 3]] /= h
 
-            draw_pts(img, lmks, save_path="starpoints.jpg")
-
         return bbox, lmks
 
     def detect_dataset(self, dataloader):
@@ -281,7 +284,7 @@ class LandmarkDetectorSTAR:
         bboxes = {}
 
         logger.info("Begin annotating landmarks...")
-        for idx, item in enumerate(tqdm(dataloader)):
+        for item in tqdm(dataloader):
             timestep_id = item["timestep_id"][0]
             camera_id = item["camera_id"][0]
 
@@ -302,10 +305,6 @@ class LandmarkDetectorSTAR:
                 bboxes[camera_id] = {}
             landmarks[camera_id][timestep_id] = lmks
             bboxes[camera_id][timestep_id] = bbox
-
-            if idx > 250:
-                break
-
         return landmarks, bboxes
 
     def annotate_landmarks(self, dataloader):
@@ -340,21 +339,88 @@ class LandmarkDetectorSTAR:
             np.savez(out_path, **lmk_dict)
 
 
-if __name__ == "__main__":
-    import tyro
-    from tqdm import tqdm
-    from torch.utils.data import DataLoader
-    from vhap.config.base import DataConfig, import_module
-    from vhap.config.goliath import GoliathDataConfig
+def main(chunk_id: int, n_chunks: int):
+    logger = get_logger(__name__, root=True, level=logging.WARN)
 
-    cfg = tyro.cli(GoliathDataConfig)
-    dataset = import_module(cfg._target)(
-        cfg=cfg,
-        img_to_tensor=False,
-        batchify_all_views=True,
+    cam_subset_front = [
+        "401643",
+        "401650",
+        "401653",
+        "401659",
+        "401892",
+        "401949",
+        "401955",
+        "401957",
+        "401961",
+        "401962",
+        "401964",
+        "402597",
+        "402598",
+        "402601",
+        "402792",
+        "402800",
+        "402803",
+        "402805",
+        "402807",
+        "402862",
+        "402866",
+        "402871",
+        "402875",
+        "402878",
+        "402879",
+        "402957",
+        "402959",
+        "402965",
+        "402966",
+        "402967",
+        "402968",
+        "402979",
+        "402983",
+        "403072",
+        "403073",
+        "403077",
+        "403078",
+    ]
+
+    chunk_size = math.ceil(len(cam_subset_front) / n_chunks)
+    cam_subset_chunk = [cam_subset_front[i:i + chunk_size] for i in range(0, len(cam_subset_front), chunk_size)][chunk_id]
+
+    dataset = GoliathHeadDataset(
+        root_path="/cluster/pegasus/jschmidt/goliath/m--20230306--0707--AXE977--pilot--ProjectGoliath--Head",
+        shared_assets_path="/cluster/pegasus/jschmidt/goliath/shared/static_assets_head.pt",
+        split=None,
+        fully_lit_only=True,
+        cameras_subset=cam_subset_chunk,
+        # frames_subset=[2858, 2888, 2918],
+        downsample_factor=2.
     )
 
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4)
+    print(f"Num cameras: {len(dataset.camera_ids)} / {len(cam_subset_front)}")
+    print(f"Num frames: {len(dataset.frame_list)}")
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=2, collate_fn=collate_fn, worker_init_fn=worker_init_fn)
 
-    detector = LandmarkDetectorSTAR()
-    detector.annotate_landmarks(dataloader)
+    star = LandmarkDetectorSTAR()
+
+    for idx, batch in enumerate(tqdm(dataloader)):
+        if batch is None:
+            print("Empty batch")
+        
+        frame_id = batch["frame_id"][0]
+        cam_id = batch["camera_id"][0]
+        image = batch["image"].squeeze(0).clamp(0, 1).permute(1, 2, 0).numpy() * 255
+        image = image.astype(np.uint8)
+
+        bbox, lmks = star.detect_single_image(image)
+
+        # draw_pts(image, lmks, save_path="./lmks.png")
+
+        save_path = dataset.root_path / "landmark2d" / "STAR" / f"cam{cam_id}" / f"{frame_id:06d}.npz"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(save_path, bbox=bbox, lmks=lmks)
+
+if __name__ == "__main__":
+    import tyro
+    
+    tyro.cli(main)
+    # if idx % 1000 == 0:
+    #     print(f"Processed {idx} / {len(dataset)} frames")

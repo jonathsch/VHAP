@@ -11,6 +11,7 @@ from torch.utils.data import Dataset, default_collate
 
 from vhap.util.log import get_logger
 from vhap.config.base import DataConfig
+from vhap.util.vector_ops import linear2srgb
 
 
 logger = get_logger(__name__)
@@ -289,6 +290,7 @@ class VideoDataset(Dataset):
         if self.img_to_tensor:
             if "rgb" in item:
                 item["rgb"] = F.to_tensor(item["rgb"])
+                item["rgb"] = linear2srgb(item["rgb"])
 
             if "alpha_map" in item:
                 item["alpha_map"] = F.to_tensor(item["alpha_map"])
