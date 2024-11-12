@@ -240,8 +240,6 @@ class GoliathDataset(VideoDataset):
     def apply_transforms(self, item):
         # NOTE: Skip for now
         super().apply_transforms(item)
-        if "rgb" in item and isinstance(item["rgb"], torch.Tensor):
-            item["rgb"] = linear2srgb(torch.as_tensor(item["rgb"], dtype=torch.float32))
         return item
 
     def getitem_single_image(self, i):
