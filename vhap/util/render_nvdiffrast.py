@@ -110,7 +110,7 @@ class NVDiffRenderer(torch.nn.Module):
         mvp = torch.bmm(proj, mv)
         return mvp
     
-    def projection_from_intrinsics(self, K: torch.Tensor, image_size: Tuple[int], near: float=0.1, far:float=10):
+    def projection_from_intrinsics(self, K: torch.Tensor, image_size: Tuple[int], near: float=0.001, far:float=100):
         """
         Transform points from camera space (x: right, y: up, z: out) to clip space (x: right, y: down, z: in)
         Args:
@@ -149,7 +149,7 @@ class NVDiffRenderer(torch.nn.Module):
         proj[:, 0, 0]  = fx * 2 / w 
         proj[:, 1, 1]  = fy * 2 / h
         proj[:, 0, 2]  = (w - 2 * cx) / w
-        proj[:, 1, 2]  = (h - 2 * cy) / h
+        proj[:, 1, 2]  = -(h - 2 * cy) / h
         proj[:, 2, 2]  = -(far+near) / (far-near)
         proj[:, 2, 3]  = -2*far*near / (far-near)
         proj[:, 3, 2]  = -1
