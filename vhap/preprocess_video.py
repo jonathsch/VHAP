@@ -170,12 +170,10 @@ def segment_anything(
         with torch.inference_mode():
             result = mask_generator.generate(src)
         
-        print(type(result))
-        print(len(result))
-        quit()
+        sg_mask = result[0]["segmentation"]
 
-        alpha = (pha[0, 0] * 255).cpu().numpy()
-        alpha = Image.fromarray(alpha.astype('uint8'))
+        # alpha = (pha[0, 0] * 255).cpu().numpy()
+        alpha = Image.fromarray(sg_mask.astype('uint8'))
         alpha_path = item['image_path'][0].replace('images', 'alpha_maps')
         if not Path(alpha_path).parent.exists():
             Path(alpha_path).parent.mkdir(parents=True)
