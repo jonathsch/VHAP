@@ -1,8 +1,8 @@
-# 
-# Toyota Motor Europe NV/SA and its affiliated companies retain all intellectual 
-# property and proprietary rights in and to this software and related documentation. 
-# Any commercial use, reproduction, disclosure or distribution of this software and 
-# related documentation without an express license agreement from Toyota Motor Europe NV/SA 
+#
+# Toyota Motor Europe NV/SA and its affiliated companies retain all intellectual
+# property and proprietary rights in and to this software and related documentation.
+# Any commercial use, reproduction, disclosure or distribution of this software and
+# related documentation without an express license agreement from Toyota Motor Europe NV/SA
 # is strictly prohibited.
 #
 
@@ -21,10 +21,11 @@ from star.lib import utility
 from star.asset import predictor_path, model_path
 
 from vhap.util.log import get_logger
+
 logger = get_logger(__name__)
 
 
-class GetCropMatrix():
+class GetCropMatrix:
     """
     from_shape -> transform_matrix
     """
@@ -52,11 +53,7 @@ class GetCropMatrix():
         b1 = acos
         b2 = ty - asin * fx - acos * fy + shift_xy[1]
 
-        rot_scale_m = np.array([
-            [a0, a1, a2],
-            [b0, b1, b2],
-            [0.0, 0.0, 1.0]
-        ], np.float32)
+        rot_scale_m = np.array([[a0, a1, a2], [b0, b1, b2], [0.0, 0.0, 1.0]], np.float32)
         return rot_scale_m
 
     def process(self, scale, center_w, center_h):
@@ -69,13 +66,12 @@ class GetCropMatrix():
         scale_mu = self.image_size / (scale * self.target_face_scale * 200.0)
         shift_xy_mu = (0, 0)
         matrix = self._compose_rotate_and_scale(
-            rot_mu, scale_mu, shift_xy_mu,
-            from_center=[center_w, center_h],
-            to_center=[to_w / 2.0, to_h / 2.0])
+            rot_mu, scale_mu, shift_xy_mu, from_center=[center_w, center_h], to_center=[to_w / 2.0, to_h / 2.0]
+        )
         return matrix
 
 
-class TransformPerspective():
+class TransformPerspective:
     """
     image, matrix3x3 -> transformed_image
     """
@@ -85,11 +81,11 @@ class TransformPerspective():
 
     def process(self, image, matrix):
         return cv2.warpPerspective(
-            image, matrix, dsize=(self.image_size, self.image_size),
-            flags=cv2.INTER_LINEAR, borderValue=0)
+            image, matrix, dsize=(self.image_size, self.image_size), flags=cv2.INTER_LINEAR, borderValue=0
+        )
 
 
-class TransformPoints2D():
+class TransformPoints2D:
     """
     points (nx2), matrix (3x3) -> points (nx2)
     """
@@ -132,8 +128,9 @@ class Alignment:
         else:
             assert False
 
-        self.getCropMatrix = GetCropMatrix(image_size=self.input_size, target_face_scale=self.target_face_scale,
-                                           align_corners=True)
+        self.getCropMatrix = GetCropMatrix(
+            image_size=self.input_size, target_face_scale=self.target_face_scale, align_corners=True
+        )
         self.transformPerspective = TransformPerspective(image_size=self.input_size)
         self.transformPoints2D = TransformPoints2D()
 
@@ -191,15 +188,33 @@ class Alignment:
         return landmarks
 
 
-def draw_pts(img, pts, mode="pts", shift=4, color=(0, 255, 0), radius=1, thickness=1, save_path=None, dif=0,
-             scale=0.3, concat=False, ):
+def draw_pts(
+    img,
+    pts,
+    mode="pts",
+    shift=4,
+    color=(0, 255, 0),
+    radius=1,
+    thickness=1,
+    save_path=None,
+    dif=0,
+    scale=0.3,
+    concat=False,
+):
     img_draw = copy.deepcopy(img)
     img_draw = cv2.cvtColor(img_draw, cv2.COLOR_RGB2BGR)
     for cnt, p in enumerate(pts):
         if mode == "index":
-            cv2.putText(img_draw, str(cnt), (int(float(p[0] + dif)), int(float(p[1] + dif))), cv2.FONT_HERSHEY_SIMPLEX,
-                        scale, color, thickness)
-        elif mode == 'pts':
+            cv2.putText(
+                img_draw,
+                str(cnt),
+                (int(float(p[0] + dif)), int(float(p[1] + dif))),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                scale,
+                color,
+                thickness,
+            )
+        elif mode == "pts":
             if len(img_draw.shape) > 2:
                 # 此处来回切换是因为opencv的bug
                 # img_draw = cv2.cvtColor(img_draw, cv2.COLOR_BGR2RGB)
@@ -224,10 +239,10 @@ class LandmarkDetectorSTAR:
 
         # facial landmark detector
         args = argparse.Namespace()
-        args.config_name = 'alignment'
+        args.config_name = "alignment"
         # could be downloaded here: https://drive.google.com/file/d/1aOx0wYEZUfBndYy_8IYszLPG_D2fhxrT/view
         # model_path = '/path/to/WFLW_STARLoss_NME_4_02_FR_2_32_AUC_0_605.pkl'
-        device_ids = '0'
+        device_ids = "0"
         device_ids = list(map(int, device_ids.split(",")))
         self.alignment = Alignment(args, model_path, dl_framework="pytorch", device_ids=device_ids)
 
@@ -261,7 +276,9 @@ class LandmarkDetectorSTAR:
             lmks[:, 0] /= w
             lmks[:, 1] /= h
 
-            bbox = np.array([bbox[0].left(), bbox[0].top(), bbox[0].right(), bbox[0].bottom(), 1.]).astype(np.float32)  # (x1, y1, x2, y2, score)
+            bbox = np.array([bbox[0].left(), bbox[0].top(), bbox[0].right(), bbox[0].bottom(), 1.0]).astype(
+                np.float32
+            )  # (x1, y1, x2, y2, score)
             bbox[[0, 2]] /= w
             bbox[[1, 3]] /= h
 
@@ -285,9 +302,7 @@ class LandmarkDetectorSTAR:
             timestep_id = item["timestep_id"][0]
             camera_id = item["camera_id"][0]
 
-            logger.info(
-                f"Annotate facial landmarks for timestep: {timestep_id}, camera: {camera_id}"
-            )
+            logger.info(f"Annotate facial landmarks for timestep: {timestep_id}, camera: {camera_id}")
             img = item["rgb"][0].numpy()
 
             bbox, lmks = self.detect_single_image(img)
@@ -302,9 +317,6 @@ class LandmarkDetectorSTAR:
                 bboxes[camera_id] = {}
             landmarks[camera_id][timestep_id] = lmks
             bboxes[camera_id][timestep_id] = bbox
-
-            if idx > 250:
-                break
 
         return landmarks, bboxes
 
@@ -331,9 +343,7 @@ class LandmarkDetectorSTAR:
             for k, v in lmk_dict.items():
                 if len(v) > 0:
                     lmk_dict[k] = np.concatenate(v, axis=0)
-            out_path = dataloader.dataset.get_property_path(
-                "landmark2d/STAR", camera_id=camera_id
-            )
+            out_path = dataloader.dataset.get_property_path("landmark2d/STAR", camera_id=camera_id)
             logger.info(f"Saving landmarks to: {out_path}")
             if not out_path.parent.exists():
                 out_path.parent.mkdir(parents=True)
