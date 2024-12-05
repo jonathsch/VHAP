@@ -1,0 +1,27 @@
+#!/bin/bash 
+ 
+#SBATCH --job-name=vhap
+#SBATCH --time=2-00:00:00
+#SBATCH --output=%x_%j_%N.log 
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=jonathan.schmidt@tum.de
+#SBATCH --ntasks=1
+#SBATCH --mem=32G
+#SBATCH --cpus-per-task=4
+#SBATCH --gpus=rtx_2080:1
+
+#SBATCH -p submit
+ 
+source /rhome/jschmidt/.bashrc
+eval "$(conda shell.bash hook)"
+source activate VHAP
+
+nvidia-smi
+
+SUBJECT="9997"
+SEQUENCE="sequence_0003"
+
+srun python vhap/preprocess_color_correct.py \
+--input-folder /cluster/pegasus/jschmidt/9997/sequences/sequence_0003/timesteps/ \
+--ccm-path /cluster/pegasus/jschmidt/9998/sequences/sequence_0001/timesteps/frame_00002/color_calib.json \
+--downsample-scales 2 4
