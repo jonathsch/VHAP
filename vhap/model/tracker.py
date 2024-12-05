@@ -1326,7 +1326,7 @@ class GlobalTracker(FlameTracker):
 
         self.calibrated = cfg.data.calibrated
 
-        # self.detect_landmarks(cfg)
+        self.detect_landmarks(cfg)
 
         # logging
         out_dir = cfg.exp.output_folder / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
