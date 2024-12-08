@@ -6,6 +6,7 @@ import trimesh
 import torch
 import tyro
 from tqdm import tqdm
+from pytorch3d.transforms import so3_exp_map
 
 from vhap.util.log import get_logger
 from vhap.config.becomminglit import BecommingLitDataConfig, NersembleTrackingConfig
@@ -44,6 +45,12 @@ def main(config_path: Path):
     shape = torch.as_tensor(flame_params["shape"][None, ...], dtype=torch.float32, device=device)
     static_offset = torch.as_tensor(flame_params["static_offset"], dtype=torch.float32, device=device)
 
+    vert_list = []
+    head_pose_list = []
+
+    id_rot = torch.zeros(1, 3, device=device, dtype=torch.float32)
+    id_transl = torch.zeros(1, 3, device=device, dtype=torch.float32)
+
     for idx in tqdm(range(len(timestep_ids) - 1)):
         # Tracking frame
         tid = timestep_ids[idx]
@@ -52,17 +59,27 @@ def main(config_path: Path):
             for k, v in flame_params.items()
             if isinstance(v, np.ndarray) and k not in {"shape", "static_offset"} and v.ndim > 1
         }
+
+        head_pose = torch.eye(4)
+        head_pose[:3, :3] = so3_exp_map(params["rotation"]).squeeze(0) # [3, 3]
+        head_pose[:3, 3] = params["translation"].view(3)
+        head_pose_list.append(head_pose.clone())
+
         verts, verts_cano, lmks = flame_model(
             shape,
             params["expr"],
-            params["rotation"],
+            # params["rotation"],
+            id_rot,
             params["neck_pose"],
             params["jaw_pose"],
             params["eyes_pose"],
-            params["translation"],
+            # params["translation"],
+            id_transl,
             static_offset=static_offset,
             return_verts_cano=True,
         )
+
+        vert_list.append(verts[0].detach().cpu().numpy())
         trimesh.PointCloud(verts[0].detach().cpu().numpy()).export(output_folder / f"frame_{tid}.ply")
 
         # Interpolate first frame
@@ -76,6 +93,11 @@ def main(config_path: Path):
             for k, v in flame_params.items()
             if isinstance(v, np.ndarray) and k not in {"shape", "static_offset"} and v.ndim > 1
         }
+
+        head_pose = torch.eye(4)
+        head_pose[:3, :3] = so3_exp_map(params["rotation"]).squeeze(0) # [3, 3]
+        head_pose[:3, 3] = params["translation"].view(3)
+        head_pose_list.append(head_pose.clone())
 
         # print(
         #     torch.as_tensor(flame_params["static_offset"][idx : idx + 1], dtype=torch.float32, device=device)
@@ -97,6 +119,8 @@ def main(config_path: Path):
             static_offset=static_offset,
             return_verts_cano=True,
         )
+
+        vert_list.append(verts[0].detach().cpu().numpy())
         trimesh.PointCloud(verts[0].detach().cpu().numpy()).export(output_folder / f"frame_{tid_1}.ply")
 
         # Interpolate second frame
@@ -110,6 +134,12 @@ def main(config_path: Path):
             for k, v in flame_params.items()
             if isinstance(v, np.ndarray) and k not in {"shape", "static_offset"} and v.ndim > 1
         }
+
+        head_pose = torch.eye(4)
+        head_pose[:3, :3] = so3_exp_map(params["rotation"]).squeeze(0) # [3, 3]
+        head_pose[:3, 3] = params["translation"].view(3)
+        head_pose_list.append(head_pose.clone())
+
         verts, verts_cano, lmks = flame_model(
             shape,
             params["expr"],
@@ -121,6 +151,8 @@ def main(config_path: Path):
             static_offset=static_offset,
             return_verts_cano=True,
         )
+
+        vert_list.append(verts[0].detach().cpu().numpy())
         trimesh.PointCloud(verts[0].detach().cpu().numpy()).export(output_folder / f"frame_{tid_2}.ply")
 
     # Last frame (must be tracking frame)
@@ -130,6 +162,12 @@ def main(config_path: Path):
         for k, v in flame_params.items()
         if isinstance(v, np.ndarray) and k not in {"shape", "static_offset"} and v.ndim > 1
     }
+
+    head_pose = torch.eye(4)
+    head_pose[:3, :3] = so3_exp_map(params["rotation"]).squeeze(0) # [3, 3]
+    head_pose[:3, 3] = params["translation"].view(3)
+    head_pose_list.append(head_pose.clone())
+
     verts, verts_cano, lmks = flame_model(
         shape,
         params["expr"],
@@ -141,7 +179,16 @@ def main(config_path: Path):
         static_offset=static_offset,
         return_verts_cano=True,
     )
+
+    vert_list.append(verts[0].detach().cpu().numpy())
     trimesh.PointCloud(verts[0].detach().cpu().numpy()).export(output_folder / f"frame_{tid}.ply")
+
+    vert_stack = np.stack(vert_list) # [N, V, 3]
+    vert_mean = np.mean(vert_stack, axis=0) # [V, 3]
+    vert_var = np.var(vert_stack) # [1]
+
+    np.save(output_folder / "vertices_mean.npy", vert_mean)
+    np.savetxt(output_folder / "vertices_var.txt", vert_var)
 
 
 if __name__ == "__main__":
